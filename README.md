@@ -9,6 +9,6 @@ Unicode characters representing Braille cells are displayed in the window when t
 
 Things To Do:
 
- -Add cursor and ability to delete and insert cells.
+ -Add keys for "move up a line" and "move down a line"
  -Add load/save file i/o.
  -Add help document.
