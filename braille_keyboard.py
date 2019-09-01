@@ -7,6 +7,7 @@ Braille.
 31 August 2019
 '''
 
+
 import pyglet
 
 
@@ -32,6 +33,8 @@ class BrailleApp(pyglet.window.Window):
                 108:6,
                 97:'left',
                 59:'right',
+                103:'down',
+                104:'up',
                 32:'space'
                 }
         self.current_cell = {
@@ -43,9 +46,9 @@ class BrailleApp(pyglet.window.Window):
                 6:False
                 }
         self.key_buffer = []
-        self.special_keys = []
 
-        self.cursor = [0, 0]
+        self.cursor_char = 0
+        self.cursor_line = 0
         self.blank_line = [chr(0 + self.unicode_offset)] * 40 + ['\n']
         self.document = [self.blank_line.copy()] # Start document with one blank line.
         self.font_size = 12
@@ -63,49 +66,52 @@ class BrailleApp(pyglet.window.Window):
             self.key_buffer.append(key)
             if type(key) == int:
                 self.current_cell[key] = True
-            else:
-                self.special_keys.append(key)
 
     def on_key_release(self, symbol, modifiers):
-        if symbol in self.braille_keys:
-            key = self.braille_keys[symbol]
-            #print(key, 'up')
-            self.key_buffer.remove(key)
+        if symbol not in self.braille_keys:
+            return 0
 
-        # Once all keys are released, process the input.
-        if len(self.key_buffer) < 1:
-            # Add characters...
-            value = self.get_cell_value()
-            if value > 0:
-                #print(chr(value + self.unicode_offset))
-                self.document[self.cursor[1]][self.cursor[0]] = chr(value + self.unicode_offset)
-                self.cursor[0] += 1
-                for dot in self.current_cell:
-                    self.current_cell[dot] = False
-            # ...and/or move the cursor.
-            else:
-                for key in self.special_keys:
-                    if key == 'space':
-                        self.document[self.cursor[1]][self.cursor[0]] = chr(0 + self.unicode_offset)
-                        self.cursor[0] += 1
-                    elif key == 'right':
-                        self.cursor[0] += 1
-                    elif key == 'left':
-                        self.cursor[0] -= 1
-                    self.special_keys.remove(key)
+        key = self.braille_keys[symbol]
+        #print(key, 'up')
+        assert key in self.key_buffer,\
+                'Cannot remove {}. Not in key buffer: {}'.format(key, self.key_buffer)
+        self.key_buffer.remove(key)
 
-            # Change lines if we go off the end of the current one.
-            if self.cursor[0] > 40:
-                self.cursor[1] += 1
-                self.cursor[0] = 0
-                # Add a new line if necessary.
-                if self.cursor[1] > len(self.document) - 1:
-                    self.document.append(self.blank_line.copy())
-            elif self.cursor[0] < 0:
-                self.cursor[1] -= 1
-                self.cursor[0] = 40
+        # Once all keys are released, generate a character.
+        value = self.get_cell_value()
+        if len(self.key_buffer) < 1 and value > 0:
+            #print(chr(value + self.unicode_offset))
+            self.document[self.cursor_line][self.cursor_char] = chr(value + self.unicode_offset)
+            self.cursor_char += 1
+            for dot in self.current_cell:
+                self.current_cell[dot] = False
 
-        #print(self.cursor)
+        # Respond to a non-character key input.
+        if key == 'space':
+            self.document[self.cursor_line][self.cursor_char] = chr(0 + self.unicode_offset)
+            self.cursor_char += 1
+        elif key == 'right':
+            self.cursor_char += 1
+        elif key == 'left':
+            self.cursor_char -= 1
+        elif key == 'up' and self.cursor_line > 0:
+            self.cursor_line -= 1
+        elif key == 'down':
+            self.cursor_line += 1
+
+        # Change lines if we go off the end of the current one.
+        if self.cursor_char > 40:
+            self.cursor_line += 1
+            self.cursor_char = 0
+        elif self.cursor_char < 0 and self.cursor_line > 0:
+            self.cursor_line -= 1
+            self.cursor_char = 40
+
+        # Add a new line if necessary.
+        if self.cursor_line > len(self.document) - 1:
+            self.document.append(self.blank_line.copy())
+
+        #print(self.cursor_char, self.cursor_line)
 
     def on_draw(self):
         window_width, window_height = self.get_size()
@@ -129,7 +135,6 @@ class BrailleApp(pyglet.window.Window):
         for line in self.document:
             for char in line:
                 display_text += char
-            display_text += '\n'
         pyglet.text.Label(
                 text=display_text,
                 font_size=self.font_size,
@@ -147,16 +152,11 @@ class BrailleApp(pyglet.window.Window):
 
         # Draw cursor line.
         font_width  = self.font_size * (1)
-        font_height = self.font_size * (4 // 3)
+        font_height = round(self.font_size * 1.25) + 4
         cursor_width = 2
         cursor_height = font_height
-        cursor_x =\
-                self.cursor[0] * font_width\
-                - cursor_width // 2
-        cursor_y =\
-                window_height\
-                - (self.cursor[1] + 1) * font_height\
-                - 2
+        cursor_x = self.cursor_char * font_width - cursor_width // 2
+        cursor_y = window_height - (self.cursor_line + 1) * font_height
         self.batch.add(
                 4,
                 pyglet.gl.GL_QUADS,
@@ -171,8 +171,12 @@ class BrailleApp(pyglet.window.Window):
                 )
 
         # Draw status bar.
-        bar = 'cursor: ' + str(self.cursor)\
-                + ' | lines: ' + str(len(self.document))
+        bar = 'cursor: ' + str(self.cursor_char) + ',' + str(self.cursor_line)\
+                + ' | lines: ' + str(len(self.document))\
+                + ' | keys: ' + str(self.key_buffer)\
+                + ' | font: ' + str(self.font_size) + 'pt., '\
+                + str(font_width) + 'px., '\
+                + str(font_height) + 'px.'
         pyglet.text.Label(
                 text=bar,
                 font_size=self.font_size,
