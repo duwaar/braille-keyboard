@@ -44,9 +44,11 @@ class BrailleApp(pyglet.window.Window):
                 }
         self.key_buffer = []
         self.special_keys = []
+
         self.cursor = [0, 0]
         self.blank_line = [chr(0 + self.unicode_offset)] * 40 + ['\n']
         self.document = [self.blank_line.copy()] # Start document with one blank line.
+        self.font_size = 12
 
     def get_cell_value(self):
         value = 0
@@ -106,15 +108,21 @@ class BrailleApp(pyglet.window.Window):
         #print(self.cursor)
 
     def on_draw(self):
-        width, height = self.get_size()
+        window_width, window_height = self.get_size()
 
         # Draw background color.
-        self.batch.add(4, pyglet.gl.GL_QUADS, self.background,
-                ('v2i', (0,     0,
-                         0,     height,
-                         width, height,
-                         width, 0)),
-                ('c3B', (240,) * 12))
+        self.batch.add(
+                4,
+                pyglet.gl.GL_QUADS,
+                self.background,
+                ('v2i', (
+                    0,              0,
+                    0,              window_height,
+                    window_width,   window_height,
+                    window_width,   0
+                    )),
+                ('c3B', (240,) * 12)
+                )
 
         # Draw Braille document text.
         display_text = ''
@@ -122,31 +130,61 @@ class BrailleApp(pyglet.window.Window):
             for char in line:
                 display_text += char
             display_text += '\n'
-        pyglet.text.Label(text=display_text,
-                          font_size=18,
-                          color=(0, 0, 0, 255),
-                          x=0, y=height,
-                          width=width,
-                          height=height,
-                          anchor_x='left',
-                          anchor_y='top',
-                          multiline=True,
-                          batch=self.batch,
-                          group=self.foreground)
+        pyglet.text.Label(
+                text=display_text,
+                font_size=self.font_size,
+                color=(0, 0, 0, 255),
+                x=0,
+                y=window_height,
+                width=window_width,
+                height=window_height,
+                anchor_x='left',
+                anchor_y='top',
+                multiline=True,
+                batch=self.batch,
+                group=self.foreground
+                )
+
+        # Draw cursor line.
+        font_width  = self.font_size * (1)
+        font_height = self.font_size * (4 // 3)
+        cursor_width = 2
+        cursor_height = font_height
+        cursor_x =\
+                self.cursor[0] * font_width\
+                - cursor_width // 2
+        cursor_y =\
+                window_height\
+                - (self.cursor[1] + 1) * font_height\
+                - 2
+        self.batch.add(
+                4,
+                pyglet.gl.GL_QUADS,
+                self.foreground,
+                ('v2i', (
+                    cursor_x,                   cursor_y,
+                    cursor_x,                   cursor_y + cursor_height,
+                    cursor_x + cursor_width,    cursor_y + cursor_height,
+                    cursor_x + cursor_width,    cursor_y
+                    )),
+                ('c3B', (0,) * 12)
+                )
 
         # Draw status bar.
         bar = 'cursor: ' + str(self.cursor)\
                 + ' | lines: ' + str(len(self.document))
-        pyglet.text.Label(text=bar,
-                          font_size=12,
-                          multiline=False,
-                          color=(0, 0, 0, 255),
-                          x=0,
-                          y=0,
-                          anchor_x='left',
-                          anchor_y='bottom',
-                          batch=self.batch,
-                          group=self.foreground)
+        pyglet.text.Label(
+                text=bar,
+                font_size=self.font_size,
+                multiline=False,
+                color=(0, 0, 0, 255),
+                x=0,
+                y=0,
+                anchor_x='left',
+                anchor_y='bottom',
+                batch=self.batch,
+                group=self.foreground
+                )
 
 
         # Render and reset.
