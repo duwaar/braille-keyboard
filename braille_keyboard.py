@@ -89,7 +89,6 @@ class BrailleApp(pyglet.window.Window):
         # Respond to a non-character key input.
         if key == 'space':
             self.document[self.cursor_line][self.cursor_char] = chr(0 + self.unicode_offset)
-            self.cursor_char += 1
         elif key == 'right':
             self.cursor_char += 1
         elif key == 'left':
