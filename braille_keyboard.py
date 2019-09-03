@@ -35,7 +35,8 @@ class BrailleApp(pyglet.window.Window):
                 59:'right',
                 103:'down',
                 104:'up',
-                32:'space'
+                32:'space',
+                65505:'shift'
                 }
         self.current_cell = {
                 1:False,
@@ -49,17 +50,12 @@ class BrailleApp(pyglet.window.Window):
 
         self.cursor_char = 0
         self.cursor_line = 0
-        self.blank_line = [chr(0 + self.unicode_offset)] * 40 + ['\n']
+        self.blank_line = [chr(0 + self.unicode_offset)] * 40
         self.document = [self.blank_line.copy()] # Start document with one blank line.
         self.font_size = 12
 
-    def get_cell_value(self):
-        value = 0
-        for dot in self.current_cell:
-            value += 2 ** (dot - 1) if self.current_cell[dot] == True else 0
-        return value
-
     def on_key_press(self, symbol, modifiers):
+        #print(symbol)
         if symbol in self.braille_keys:
             key = self.braille_keys[symbol]
             #print(key, 'down')
@@ -77,38 +73,10 @@ class BrailleApp(pyglet.window.Window):
                 'Cannot remove {}. Not in key buffer: {}'.format(key, self.key_buffer)
         self.key_buffer.remove(key)
 
-        # Once all keys are released, generate a character.
-        value = self.get_cell_value()
-        if len(self.key_buffer) < 1 and value > 0:
-            #print(chr(value + self.unicode_offset))
-            self.document[self.cursor_line][self.cursor_char] = chr(value + self.unicode_offset)
-            self.cursor_char += 1
-            for dot in self.current_cell:
-                self.current_cell[dot] = False
-
-        # Respond to a non-character key input.
-        if key == 'space':
-            self.document[self.cursor_line][self.cursor_char] = chr(0 + self.unicode_offset)
-        elif key == 'right':
-            self.cursor_char += 1
-        elif key == 'left':
-            self.cursor_char -= 1
-        elif key == 'up' and self.cursor_line > 0:
-            self.cursor_line -= 1
-        elif key == 'down':
-            self.cursor_line += 1
-
-        # Change lines if we go off the end of the current one.
-        if self.cursor_char > 40:
-            self.cursor_line += 1
-            self.cursor_char = 0
-        elif self.cursor_char < 0 and self.cursor_line > 0:
-            self.cursor_line -= 1
-            self.cursor_char = 40
-
-        # Add a new line if necessary.
-        if self.cursor_line > len(self.document) - 1:
-            self.document.append(self.blank_line.copy())
+        self.key_function(key)
+        self.generate_character()
+        self.wrap_cursor()
+        self.add_new_line()
 
         #print(self.cursor_char, self.cursor_line)
 
@@ -130,12 +98,9 @@ class BrailleApp(pyglet.window.Window):
                 )
 
         # Draw Braille document text.
-        display_text = ''
-        for line in self.document:
-            for char in line:
-                display_text += char
+        doc_text = self.generate_doc_text()
         pyglet.text.Label(
-                text=display_text,
+                text=doc_text,
                 font_size=self.font_size,
                 color=(0, 0, 0, 255),
                 x=0,
@@ -189,7 +154,6 @@ class BrailleApp(pyglet.window.Window):
                 group=self.foreground
                 )
 
-
         # Render and reset.
         self.batch.draw()
         self.batch = pyglet.graphics.Batch()
@@ -199,6 +163,62 @@ class BrailleApp(pyglet.window.Window):
 
     def run(self):
         pyglet.app.run()
+
+    def generate_doc_text(self):
+        ''' Convert the array of lines into a block of text. '''
+        doc_text = ''
+        for line in self.document:
+            for char in line:
+                doc_text += char
+            doc_text += '\n'
+        return doc_text
+
+    def get_cell_value(self):
+        value = 0
+        for dot in self.current_cell:
+            value += 2 ** (dot - 1) if self.current_cell[dot] == True else 0
+        return value
+
+    def key_function(self, key):
+        ''' Respond to a non-character key input. '''
+        if key == 'space':
+            self.document[self.cursor_line][self.cursor_char] = chr(0 + self.unicode_offset)
+            self.cursor_char += 1
+        elif key == 'right':
+            self.cursor_char += 1
+        elif key == 'left' and not (self.cursor_line == 0 and self.cursor_char == 0):
+            self.cursor_char -= 1
+        elif key == 'up' and self.cursor_line > 0:
+            self.cursor_line -= 1
+        elif key == 'down':
+            self.cursor_line += 1
+        elif key == 'shift':
+            pass
+
+    def generate_character(self):
+        ''' Once all keys are released, generate a character. '''
+        value = self.get_cell_value()
+        if len(self.key_buffer) < 1 and value > 0:
+            #print(chr(value + self.unicode_offset))
+            self.document[self.cursor_line][self.cursor_char] = chr(value + self.unicode_offset)
+            self.cursor_char += 1
+            for dot in self.current_cell:
+                self.current_cell[dot] = False
+
+    def wrap_cursor(self):
+        ''' If cursor goes off the end of the line, wrap around to the next one. '''
+        if self.cursor_char > 40:
+            self.cursor_line += 1
+            self.cursor_char = 0
+        elif self.cursor_char < 0 and self.cursor_line > 0:
+            self.cursor_line -= 1
+            self.cursor_char = 40
+
+    def add_new_line(self):
+        ''' Add a new line if necessary. '''
+        if self.cursor_line > len(self.document) - 1:
+            self.document.append(self.blank_line.copy())
+
 
 def main():
     application = BrailleApp()
