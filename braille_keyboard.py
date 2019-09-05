@@ -48,11 +48,12 @@ class BrailleApp(pyglet.window.Window):
                 }
         self.key_buffer = []
 
+        self.line_length = 40
+        self.font_size = 12
         self.cursor_char = 0
         self.cursor_line = 0
-        self.blank_line = [chr(0 + self.unicode_offset)] * 40
+        self.blank_line = [chr(0 + self.unicode_offset)] * self.line_length
         self.document = [self.blank_line.copy()] # Start document with one blank line.
-        self.font_size = 12
 
     def on_key_press(self, symbol, modifiers):
         #print(symbol)
@@ -200,6 +201,10 @@ class BrailleApp(pyglet.window.Window):
         value = self.get_cell_value()
         if len(self.key_buffer) < 1 and value > 0:
             #print(chr(value + self.unicode_offset))
+            assert self.cursor_line <= len(self.document) - 1,\
+                    'Line {} does not exist.'.format(self.cursor_line)
+            assert self.cursor_char <= len(self.document[self.cursor_line]) - 1,\
+                    'Character {} does not exist.'.format(self.cursor_char)
             self.document[self.cursor_line][self.cursor_char] = chr(value + self.unicode_offset)
             self.cursor_char += 1
             for dot in self.current_cell:
@@ -207,12 +212,12 @@ class BrailleApp(pyglet.window.Window):
 
     def wrap_cursor(self):
         ''' If cursor goes off the end of the line, wrap around to the next one. '''
-        if self.cursor_char > 40:
+        if self.cursor_char > self.line_length - 1:
             self.cursor_line += 1
             self.cursor_char = 0
         elif self.cursor_char < 0 and self.cursor_line > 0:
             self.cursor_line -= 1
-            self.cursor_char = 40
+            self.cursor_char = self.line_length - 1
 
     def add_new_line(self):
         ''' Add a new line if necessary. '''

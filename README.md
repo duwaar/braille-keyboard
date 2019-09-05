@@ -9,5 +9,6 @@ Unicode characters representing Braille cells are displayed in the window when t
 
 Things To Do:
 
+ -Insert characters instead of overwriting.
  -Add load/save file i/o.
  -Add help document.
