@@ -50,16 +50,13 @@ class BrailleApp(pyglet.window.Window):
 
         self.line_length = 40
         self.font_size = 12
-        self.cursor_char = 0
-        self.cursor_line = 0
-        self.blank_line = [chr(0 + self.unicode_offset)] * self.line_length
-        self.document = [self.blank_line.copy()] # Start document with one blank line.
+        self.cursor_position = 0
+        self.write_mode = 'insert'
+        self.document = []
 
     def on_key_press(self, symbol, modifiers):
-        #print(symbol)
         if symbol in self.braille_keys:
             key = self.braille_keys[symbol]
-            #print(key, 'down')
             self.key_buffer.append(key)
             if type(key) == int:
                 self.current_cell[key] = True
@@ -69,17 +66,12 @@ class BrailleApp(pyglet.window.Window):
             return 0
 
         key = self.braille_keys[symbol]
-        #print(key, 'up')
         assert key in self.key_buffer,\
                 'Cannot remove {}. Not in key buffer: {}'.format(key, self.key_buffer)
         self.key_buffer.remove(key)
 
         self.key_function(key)
         self.generate_character()
-        self.wrap_cursor()
-        self.add_new_line()
-
-        #print(self.cursor_char, self.cursor_line)
 
     def on_draw(self):
         window_width, window_height = self.get_size()
@@ -120,8 +112,8 @@ class BrailleApp(pyglet.window.Window):
         font_height = round(self.font_size * 1.25) + 4
         cursor_width = 2
         cursor_height = font_height
-        cursor_x = self.cursor_char * font_width - cursor_width // 2
-        cursor_y = window_height - (self.cursor_line + 1) * font_height
+        cursor_x = self.cursor_position % self.line_length * font_width - cursor_width // 2
+        cursor_y = window_height - (self.cursor_position // self.line_length + 1) * font_height
         self.batch.add(
                 4,
                 pyglet.gl.GL_QUADS,
@@ -136,8 +128,9 @@ class BrailleApp(pyglet.window.Window):
                 )
 
         # Draw status bar.
-        bar = 'cursor: ' + str(self.cursor_char) + ',' + str(self.cursor_line)\
-                + ' | lines: ' + str(len(self.document))\
+        bar =        'cursor: ' + str(self.cursor_position)\
+                + ' | lines: ' + str(len(self.document) // self.line_length + 1)\
+                + ' | mode: ' + self.write_mode\
                 + ' | keys: ' + str(self.key_buffer)\
                 + ' | font: ' + str(self.font_size) + 'pt., '\
                 + str(font_width) + 'px., '\
@@ -168,13 +161,16 @@ class BrailleApp(pyglet.window.Window):
     def generate_doc_text(self):
         ''' Convert the array of lines into a block of text. '''
         doc_text = ''
-        for line in self.document:
-            for char in line:
+        for line in range(len(self.document) // self.line_length + 1):
+            line_start = line * self.line_length
+            line_end = line_start + self.line_length
+            for char in self.document[line_start:line_end]:
                 doc_text += char
             doc_text += '\n'
         return doc_text
 
     def get_cell_value(self):
+        ''' Calculate the "value" of the Braille cell in decimal (if each dot is a bit). '''
         value = 0
         for dot in self.current_cell:
             value += 2 ** (dot - 1) if self.current_cell[dot] == True else 0
@@ -183,46 +179,57 @@ class BrailleApp(pyglet.window.Window):
     def key_function(self, key):
         ''' Respond to a non-character key input. '''
         if key == 'space':
-            self.document[self.cursor_line][self.cursor_char] = chr(0 + self.unicode_offset)
-            self.cursor_char += 1
-        elif key == 'right':
-            self.cursor_char += 1
-        elif key == 'left' and not (self.cursor_line == 0 and self.cursor_char == 0):
-            self.cursor_char -= 1
-        elif key == 'up' and self.cursor_line > 0:
-            self.cursor_line -= 1
-        elif key == 'down':
-            self.cursor_line += 1
+            self.write_cell(self.cursor_position, 0)
+        elif key == 'right' and self.cursor_to_end() > 0:
+            self.cursor_position += 1
+        elif key == 'left' and self.cursor_position != 0:
+            self.cursor_position -= 1
+        elif key == 'up' and self.cursor_line() > 0:
+            self.cursor_position -= self.line_length
+        elif key == 'down' and self.cursor_to_end() >= self.line_length:
+            self.cursor_position += self.line_length
         elif key == 'shift':
-            pass
+            if self.write_mode == 'insert':
+                self.write_mode = 'assign'
+            elif self.write_mode == 'assign':
+                self.write_mode = 'delete'
+            elif self.write_mode == 'delete':
+                self.write_mode = 'insert'
+            else:
+                assert False, 'Write mode "{}" invalid.'.format(self.write_mode)
 
     def generate_character(self):
         ''' Once all keys are released, generate a character. '''
         value = self.get_cell_value()
         if len(self.key_buffer) < 1 and value > 0:
-            #print(chr(value + self.unicode_offset))
-            assert self.cursor_line <= len(self.document) - 1,\
-                    'Line {} does not exist.'.format(self.cursor_line)
-            assert self.cursor_char <= len(self.document[self.cursor_line]) - 1,\
-                    'Character {} does not exist.'.format(self.cursor_char)
-            self.document[self.cursor_line][self.cursor_char] = chr(value + self.unicode_offset)
-            self.cursor_char += 1
+            self.write_cell(self.cursor_position, value)
             for dot in self.current_cell:
                 self.current_cell[dot] = False
 
-    def wrap_cursor(self):
-        ''' If cursor goes off the end of the line, wrap around to the next one. '''
-        if self.cursor_char > self.line_length - 1:
-            self.cursor_line += 1
-            self.cursor_char = 0
-        elif self.cursor_char < 0 and self.cursor_line > 0:
-            self.cursor_line -= 1
-            self.cursor_char = self.line_length - 1
+    def write_cell(self, index, value):
+        ''' Assign or insert unicode character "value" at "index" depending on current mode. '''
+        if self.write_mode == 'insert':
+            self.document.insert(index, chr(value + self.unicode_offset))
+            self.cursor_position += 1
+        elif self.write_mode == 'assign' and self.cursor_position <= len(self.document) - 1:
+            self.document[index] = chr(value + self.unicode_offset)
+            self.cursor_position += 1
+        elif self.write_mode == 'delete'\
+                and value == 0\
+                and self.cursor_position <= len(self.document) - 1:
+            self.document.pop(self.cursor_position)
 
-    def add_new_line(self):
-        ''' Add a new line if necessary. '''
-        if self.cursor_line > len(self.document) - 1:
-            self.document.append(self.blank_line.copy())
+    def cursor_line(self):
+        ''' Return the line number the cursor is on. '''
+        return self.cursor_position // self.line_length
+
+    def cursor_char(self):
+        ''' Return the position of the cursor on the line. '''
+        return self.cursor_position % self.line_length
+
+    def cursor_to_end(self):
+        ''' Return the number of characters from the cursor to the last index. '''
+        return len(self.document) - self.cursor_position
 
 
 def main():
