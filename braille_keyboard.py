@@ -36,7 +36,7 @@ class BrailleApp(pyglet.window.Window):
                 103:'down',
                 104:'up',
                 32:'space',
-                65505:'shift'
+                65505:'l-shift'
                 }
         self.current_cell = {
                 1:False,
@@ -52,7 +52,9 @@ class BrailleApp(pyglet.window.Window):
         self.font_size = 12
         self.cursor_position = 0
         self.write_mode = 'insert'
-        self.document = []
+
+        self.file_name = 'braille_notes.txt'
+        self.document = self.load_file()
 
     def on_key_press(self, symbol, modifiers):
         if symbol in self.braille_keys:
@@ -152,11 +154,27 @@ class BrailleApp(pyglet.window.Window):
         self.batch.draw()
         self.batch = pyglet.graphics.Batch()
 
-    def on_exit(self):
+    def on_close(self):
+        self.save_file()
         exit()
 
     def run(self):
         pyglet.app.run()
+
+    def load_file(self):
+        ''' Returns array of characters in file. '''
+        file = open(self.file_name, 'r')
+        text = file.read()
+        document = list(text)
+        file.close()
+        return document
+
+    def save_file(self):
+        ''' Writes all characters to file. '''
+        file = open(self.file_name, 'w')
+        text = self.generate_doc_text()
+        file.write(text)
+        file.close()
 
     def generate_doc_text(self):
         ''' Convert the array of lines into a block of text. '''
@@ -188,7 +206,7 @@ class BrailleApp(pyglet.window.Window):
             self.cursor_position -= self.line_length
         elif key == 'down' and self.cursor_to_end() >= self.line_length:
             self.cursor_position += self.line_length
-        elif key == 'shift':
+        elif key == 'l-shift':
             if self.write_mode == 'insert':
                 self.write_mode = 'assign'
             elif self.write_mode == 'assign':
@@ -197,6 +215,14 @@ class BrailleApp(pyglet.window.Window):
                 self.write_mode = 'insert'
             else:
                 assert False, 'Write mode "{}" invalid.'.format(self.write_mode)
+        elif key == 'open' and 'l-ctrl' in self.key_buffer:
+            pass
+        elif key == 'save' and 'l-ctrl' in self.key_buffer:
+            pass
+        elif key == 'help' and 'l-ctrl' in self.key_buffer:
+            pass
+        elif key == 'pref' and 'l-ctrl' in self.key_buffer:
+            pass
 
     def generate_character(self):
         ''' Once all keys are released, generate a character. '''
